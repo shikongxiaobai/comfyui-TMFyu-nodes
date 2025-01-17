@@ -3,6 +3,53 @@ import json
 import requests
 import torch
 import re
+import os
+
+class addToText:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "filepath": ("STRING", {"default": "输入路径"}),
+                "text_to_add": ("STRING", {"default": "需要加入的内容"}),
+                
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ('输出文本',)
+    FUNCTION = "append_to_file"
+    CATEGORY = "TMFyu/Text"
+
+    def append_to_file(self,filepath, text_to_add):
+    # """
+    # 将文本添加到文件，如果文本与文件中已有的某行完全相同，则不添加。
+
+    # Args:
+    #     filepath: 文件路径
+    #     text_to_add: 要添加的文本
+    # """
+         # 检查路径是否存在
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"路径不存在: {filepath}")
+        
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                existing_lines = f.readlines()
+        except FileNotFoundError:
+            existing_lines = []
+
+        # 去除每行末尾的换行符，方便比较
+        existing_lines = [line.strip() for line in existing_lines]
+
+        if text_to_add not in existing_lines:
+            with open(filepath, 'a', encoding='utf-8') as f:
+                f.write(text_to_add + '\n')
+        return(text_to_add,)
+        
+
+        
+            
 
 class switchT2T:
     @classmethod
@@ -341,6 +388,7 @@ NODE_CLASS_MAPPINGS = {
     "Text_Concatenate":Text_Concatenate,
     "PromptSlide":PromptSlide,
     "replace_string":replace_string,
+    "addToText":addToText
 }
 # 一个包含节点友好/可读的标题的字典
 
@@ -349,7 +397,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LLMProcessingNode":"LLM提示词分类",
     "Text_Concatenate":"字符串合并",
     "PromptSlide":"提示词权重",
-    "replace_string":"字符串替换"
+    "replace_string":"字符串替换",
+    "addToText":"添加字符到文本",
 
 
 }
