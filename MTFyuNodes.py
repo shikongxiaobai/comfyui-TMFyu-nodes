@@ -5,6 +5,35 @@ import torch
 import re
 import os
 
+
+class LowercaseString:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"multiline": True, "placeholder": "输入需要转换成小写的字符串"}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("lowercase_text",)
+    FUNCTION = "convert_to_lowercase"
+    CATEGORY = "TMFyu/String"
+
+    def convert_to_lowercase(self, text):
+        """
+        将输入的字符串转换为小写并返回。
+
+        Args:
+            text: 要转换的字符串。
+
+        Returns:
+            转换后的字符串。
+        """
+        lowercase_text = text.lower()
+        return (lowercase_text,)
+
+
 class addToText:
     @classmethod
     def INPUT_TYPES(cls):
@@ -388,7 +417,8 @@ NODE_CLASS_MAPPINGS = {
     "Text_Concatenate":Text_Concatenate,
     "PromptSlide":PromptSlide,
     "replace_string":replace_string,
-    "addToText":addToText
+    "addToText":addToText,
+    "LowercaseString":LowercaseString
 }
 # 一个包含节点友好/可读的标题的字典
 
@@ -399,6 +429,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PromptSlide":"提示词权重",
     "replace_string":"字符串替换",
     "addToText":"添加字符到文本",
+    "LowercaseString":"大写换小写"
 
 
 }
