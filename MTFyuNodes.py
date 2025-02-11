@@ -4,6 +4,259 @@ import requests
 import torch
 import re
 import os
+from PIL import Image
+import numpy as np
+import random
+
+
+
+class GeminiChatNode:
+    WEB_DIRECTORY = "./js"
+    def __init__(self):
+        self.api_key = ""
+        self.model_name = ""
+        self.model_url = ""
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "api_key": ("STRING", {"multiline": False, "default": ""}),
+                "model_name": ("STRING", {"multiline": False, "default": "gemini-pro"}),
+                "model_url": ("STRING", {"multiline": False, "default": "https://generativelanguage.googleapis.com/v1beta/models/"}),
+                "text": ("STRING", {"multiline": True}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    FUNCTION = "chat"
+    CATEGORY = "TMFyu/Text"
+
+    def chat(self, api_key, model_name, model_url, text):
+        self.api_key = api_key
+        self.model_name = model_name
+        self.model_url = model_url
+        self.url = f"{self.model_url}{self.model_name}:generateContent?key={self.api_key}"
+        headers = {
+            "Content-Type": "application/json",
+        }
+
+        if not self.api_key:
+            return ("API key is required",)
+
+        data = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": text
+                        }
+                    ]
+                }
+            ]
+        }
+
+        response = requests.post(self.url, headers=headers, data=json.dumps(data))
+
+        if response.status_code == 200:
+            try:
+                result = response.json()
+                return (result["candidates"][0]["content"]["parts"][0]["text"],)
+            except (KeyError, IndexError):
+                return ("Invalid response format from API",)
+        else:
+            return (f"API request failed with status code {response.status_code}",)
+
+
+class JsonRegexNode:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "text_input": ("STRING", {"multiline": True}),
+                "_01IS_NSFW": ("BOOLEAN", {"default": True, "label_on": "enabled", "label_off": "disabled"}),
+                "_02角色头部以上服饰特征": ("BOOLEAN", {"default": True, "label_on": "enabled", "label_off": "disabled"}),
+                "_03角色动作及表情": ("BOOLEAN", {"default": True, "label_on": "enabled", "label_off": "disabled"}),
+                "_04角色上半身服饰特征": ("BOOLEAN", {"default": True, "label_on": "enabled", "label_off": "disabled"}),
+                "_05角色下半身服饰特征": ("BOOLEAN", {"default": True, "label_on": "enabled", "label_off": "disabled"}),
+                "_06其他": ("BOOLEAN", {"default": True, "label_on": "enabled", "label_off": "disabled"}),
+                "_07NSFW": ("BOOLEAN", {"default": True, "label_on": "enabled", "label_off": "disabled"}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("IS_NSFW", "角色头部以上服饰特征", "角色动作及表情", "角色上半身服饰特征", "角色下半身服饰特征", "其他", "NSFW")
+    FUNCTION = "parse_text"
+    CATEGORY = "TMFyu/Text"
+
+    def parse_text(self, text_input, _01IS_NSFW, _02角色头部以上服饰特征, _03角色动作及表情, _04角色上半身服饰特征, _05角色下半身服饰特征, _06其他, _07NSFW):
+        # Extract fields using regular expressions
+        is_nsfw = re.search(r'"IS_NSFW":\s*(true|false)', text_input)
+        is_nsfw = is_nsfw.group(1) if is_nsfw else "Not found"
+
+        headwear = re.search(r'"角色头部以上服饰特征":\s*"([^"]*)"', text_input)
+        headwear = headwear.group(1) if headwear else "Not found"
+
+        action = re.search(r'"角色动作及表情":\s*"([^"]*)"', text_input)
+        action = action.group(1) if action else "Not found"
+
+        upper_body = re.search(r'"角色上半身服饰特征":\s*"([^"]*)"', text_input)
+        upper_body = upper_body.group(1) if upper_body else "Not found"
+
+        lower_body = re.search(r'"角色下半身服饰特征":\s*"([^"]*)"', text_input)
+        lower_body = lower_body.group(1) if lower_body else "Not found"
+
+        other = re.search(r'"其他":\s*"([^"]*)"', text_input)
+        other = other.group(1) if other else "Not found"
+
+        nsfw = re.search(r'"NSFW":\s*"([^"]*)"', text_input)
+        nsfw = nsfw.group(1) if nsfw else "Not found"
+
+        return (
+            is_nsfw if _01IS_NSFW else " ",
+            headwear if _02角色头部以上服饰特征 else " ",
+            action if _03角色动作及表情 else " ",
+            upper_body if _04角色上半身服饰特征 else " ",
+            lower_body if _05角色下半身服饰特征 else " ",
+            other if _06其他 else " ",
+            nsfw if _07NSFW else " "
+        )
+
+class RandomImageComfyUINode:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "path": ("STRING", {"default": ""}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "read_subdirs": ("BOOLEAN", {"default": True, "label_on": "enabled", "label_off": "disabled"}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "run"
+    CATEGORY = "TMFyu/image"
+
+    def run(self, path, seed, read_subdirs):
+        random.seed(seed)
+
+        if not os.path.exists(path):
+            print(f"Error: Path '{path}' does not exist.")
+            return (None,)
+
+        image_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif')
+        image_files = []
+
+        if read_subdirs:
+            # Get all subdirectories
+            subdirs = [os.path.join(path, d) for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+
+            if not subdirs:
+                print(f"Error: No subdirectories found in '{path}'.")
+                return (None,)
+
+            # Randomly choose a subdirectory
+            random_subdir = random.choice(subdirs)
+
+            for root, _, files in os.walk(random_subdir):
+                for file in files:
+                    if file.lower().endswith(image_extensions):
+                        image_files.append(os.path.join(root, file))
+        else:
+            # Only read files in the specified path
+            # Only read files in the specified path
+            for file in os.listdir(path):
+                if file.lower().endswith(image_extensions):
+                    image_files.append(os.path.join(path, file))
+            if not image_files:
+                print(f"Error: No image files found in '{path}'.")
+                return (None,)
+
+        # Generate a random index based on the length of image_files
+        random_index = random.randint(0, len(image_files) - 1)
+        random_image_path = image_files[random_index]
+        print(f"Selected image: {random_image_path}")
+
+        try:
+            image = Image.open(random_image_path)
+            image_tensor = self.pil_image_to_tensor(image)
+            return (image_tensor,)
+        except Exception as e:
+            print(f"Error opening or converting image: {e}")
+            return (None,)
+
+    def pil_image_to_tensor(self, image):
+        # Convert the PIL Image to a NumPy array
+        np_image = np.array(image).astype(np.float32) / 255.0
+
+        # Convert the NumPy array to a PyTorch tensor
+        tensor_image = torch.from_numpy(np_image)[None,]
+
+        return tensor_image
+
+class SetLatentSizeByAspectRatio:
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "width_base": ("INT", {"default": 512, "min": 64, "max": 2048, "step": 64}),
+                "height_base": ("INT", {"default": 512, "min": 64, "max": 2048, "step": 64}),
+                "scale_factor": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 10.0, "step": 0.1}),
+                "mode": (["nearest-exact", "bicubic"],),
+            }
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("latent",)
+    FUNCTION = "set_latent_size"
+
+    CATEGORY = "TMFyu/image"
+
+    def set_latent_size(self, image, width_base, height_base, scale_factor, mode):
+        # 获取图片尺寸
+        img = image[0].permute(1, 2, 0).numpy() # (C, H, W) -> (H, W, C)
+        height, width, _ = img.shape
+        
+        # 计算长宽比
+        aspect_ratio = width / height
+
+        # 根据长宽比判断 latent 尺寸
+        if aspect_ratio > 1.2:  # 宽图
+            latent_width = int(width_base * 1.5 * scale_factor)
+            latent_height = int(height_base * scale_factor)
+        elif aspect_ratio < 0.8:  # 长图
+            latent_width = int(width_base * scale_factor)
+            latent_height = int(height_base * 1.5 * scale_factor)
+        else:  # 方图
+            latent_width = int(width_base * scale_factor)
+            latent_height = int(height_base * scale_factor)
+
+        # 确保 latent 尺寸是 8 的倍数 (这是 latent 空间通常的要求)
+        latent_width = (latent_width // 8) * 8
+        latent_height = (latent_height // 8) * 8
+        
+        # 调整图像尺寸为latent size
+        img = Image.fromarray((img * 255).astype(np.uint8))
+        img = img.resize((latent_width, latent_height), Image.Resampling.BICUBIC if mode == 'bicubic' else Image.Resampling.NEAREST_EXACT)
+        img = np.array(img).astype(np.float32) / 255.0
+        img = img.transpose(2, 0, 1)
+        
+        # 创建空的 latent 空间
+        latent = torch.zeros([1, 4, latent_height // 8, latent_width // 8])
+
+        return ({"samples": latent, "image": torch.from_numpy(img).unsqueeze(0)}, )
+    
 
 
 class LowercaseString:
@@ -418,7 +671,10 @@ NODE_CLASS_MAPPINGS = {
     "PromptSlide":PromptSlide,
     "replace_string":replace_string,
     "addToText":addToText,
-    "LowercaseString":LowercaseString
+    "LowercaseString":LowercaseString,
+    "RandomImageComfyUINode":RandomImageComfyUINode,
+    "JsonRegexNode":JsonRegexNode,
+    "GeminiChatNode":GeminiChatNode,
 }
 # 一个包含节点友好/可读的标题的字典
 
@@ -429,7 +685,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PromptSlide":"提示词权重",
     "replace_string":"字符串替换",
     "addToText":"添加字符到文本",
-    "LowercaseString":"大写换小写"
+    "LowercaseString":"大写换小写",
+    "RandomImageComfyUINode":"随机获取子路径图片",
+    "JsonRegexNode":"提示词分离",
+    "GeminiChatNode":"gemini大语言对话"
 
 
 }
