@@ -24,7 +24,7 @@ class CharacterNode:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("prompt",)
     FUNCTION = "generate_prompt"
-    CATEGORY = "custom/character"
+    CATEGORY = "TMFyu/Text"
 
     def load_csv(self, filename):
         data = {}
@@ -71,5 +71,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "CharacterNode": "Character Prompt Generator"
+    "CharacterNode": "角色抽取"
 }
