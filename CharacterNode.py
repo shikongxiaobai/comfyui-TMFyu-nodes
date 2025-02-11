@@ -12,11 +12,12 @@ class CharacterNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "csv_path": ("STRING", {"default": "H:\py\j_s\danbooru_character_webui.csv"}),
+                "csv_path": ("STRING", {"default": "H:\comfyui_nodeEdit\custom_nodes\comfyui-TMFyu-nodes\danbooru_character_webui.csv"}),
                 "keyword": ("STRING", {"default": "1girl"}),
                 "threshold": ("INT", {"default": 100, "min": 0, "max": 10000}),
                 "count": ("INT", {"default": 1, "min": 1, "max": 10}),
                 "required_keywords": ("STRING", {"default": ""}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 2**32 - 1}),
             },
         }
 
@@ -52,7 +53,8 @@ class CharacterNode:
         
         return random.sample(filtered_rows, min(count, len(filtered_rows))) if filtered_rows else []
 
-    def generate_prompt(self, csv_path, keyword, threshold, required_keywords, count):
+    def generate_prompt(self, csv_path, keyword, threshold, required_keywords, count, seed):
+        random.seed(seed)
         data = self.load_csv(csv_path)
         results = self.get_random_matching_rows(data, keyword, threshold, required_keywords, count)
         
