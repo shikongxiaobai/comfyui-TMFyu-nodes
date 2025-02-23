@@ -11,6 +11,165 @@ import csv
 import comfy.sd
 import comfy.utils
 import nodes
+from PIL import Image, ImageOps
+import datetime
+from PIL import Image, PngImagePlugin
+
+class TimeStampedImageSaver:
+    def __init__(self):
+        self.output_dir = folder_paths.get_output_directory()
+        self.compress_level = 4
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "base_path": ("STRING", {"default": "ComfyUI_Output", "multiline": False}),
+                "save_workflow": ("BOOLEAN", {"default": True, "label_on": "ENABLED", "label_off": "DISABLED"}),
+                "filename_prefix": ("STRING", {"default": "Image"}),
+            },
+            "hidden": {
+                "prompt": "PROMPT", 
+                "extra_pnginfo": "EXTRA_PNGINFO"
+            },
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save_images"
+    OUTPUT_NODE = True
+    CATEGORY = "TMFyu/image"
+
+    def save_images(self, images, base_path, save_workflow=True, filename_prefix="Image", prompt=None, extra_pnginfo=None):
+        # 创建时间戳文件夹
+        now = datetime.datetime.now()
+        date_folder = now.strftime("%Y-%m-%d")
+        full_path = os.path.join(base_path, date_folder)
+        os.makedirs(full_path, exist_ok=True)
+
+        # 获取保存路径
+        counter = 1
+        results = []
+        
+        for image in images:
+            # 生成带时间戳的文件名
+            timestamp = now.strftime("%H-%M-%S")
+            file_name = f"{filename_prefix}_{timestamp}_{counter:05}.png"
+            file_path = os.path.join(full_path, file_name)
+
+            # 转换图像数据
+            i = 255.0 * image.cpu().numpy()
+            img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+
+            # 添加工作流元数据
+            metadata = PngImagePlugin.PngInfo()
+            if save_workflow:
+                if prompt is not None:
+                    metadata.add_text("prompt", json.dumps(prompt))
+                if extra_pnginfo is not None:
+                    for x in extra_pnginfo:
+                        metadata.add_text(x, json.dumps(extra_pnginfo[x]))
+
+            # 保存图片
+            img.save(file_path, 
+                    pnginfo=metadata if save_workflow else None,
+                    compress_level=self.compress_level)
+
+            results.append({
+                "filename": file_name,
+                "subfolder": date_folder,
+                "type": "output"
+            })
+            counter += 1
+
+        return {"ui": {"images": results}}
+
+
+
+
+
+class LoadImagesFromDirList:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "directory": ("STRING", {"default": ""}),
+            },
+            "optional": {
+                "image_load_cap": ("INT", {"default": 0, "min": 0, "step": 1}),
+                "start_index": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "step": 1}),
+                "load_always": ("BOOLEAN", {"default": False, "label_on": "enabled", "label_off": "disabled"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
+    RETURN_NAMES = ("IMAGE", "MASK", "FILE_NANE")
+    OUTPUT_IS_LIST = (True, True, True)
+
+    FUNCTION = "load_images"
+
+    CATEGORY = "TMFyu/image"
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        if 'load_always' in kwargs and kwargs['load_always']:
+            return float("NaN")
+        else:
+            return hash(frozenset(kwargs))
+
+    def load_images(self, directory: str, image_load_cap: int = 0, start_index: int = 0, load_always=False):
+        if not os.path.isdir(directory):
+            raise FileNotFoundError(f"Directory '{directory}' cannot be found.")
+        dir_files = os.listdir(directory)
+        if len(dir_files) == 0:
+            raise FileNotFoundError(f"No files in directory '{directory}'.")
+
+        # Filter files by extension
+        valid_extensions = ['.jpg', '.jpeg', '.png', '.webp']
+        dir_files = [f for f in dir_files if any(f.lower().endswith(ext) for ext in valid_extensions)]
+
+        dir_files = sorted(dir_files)
+        dir_files = [os.path.join(directory, x) for x in dir_files]  # 保持完整路径用于加载
+
+        # start at start_index
+        dir_files = dir_files[start_index:]
+
+        images = []
+        masks = []
+        file_paths = []
+
+        limit_images = False
+        if image_load_cap > 0:
+            limit_images = True
+        image_count = 0
+
+        for image_path in dir_files:
+            if os.path.isdir(image_path):  # 跳过子目录
+                continue
+            if limit_images and image_count >= image_load_cap:
+                break
+            
+            # 加载图片部分保持不变
+            i = Image.open(image_path)
+            i = ImageOps.exif_transpose(i)
+            image = i.convert("RGB")
+            image = np.array(image).astype(np.float32) / 255.0
+            image = torch.from_numpy(image)[None,]
+
+            # 处理掩码
+            if 'A' in i.getbands():
+                mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
+                mask = 1. - torch.from_numpy(mask)
+            else:
+                mask = torch.zeros((64, 64), dtype=torch.float32, device="cpu")
+
+            images.append(image)
+            masks.append(mask)
+            file_paths.append(os.path.basename(image_path))  # 修改这里获取文件名
+            image_count += 1
+
+        return (images, masks, file_paths)
+
 
 
 class CharacterNode:
@@ -739,6 +898,8 @@ NODE_CLASS_MAPPINGS = {
     "JsonRegexNode":JsonRegexNode,
     "GeminiChatNode":GeminiChatNode,
     "CharacterNode": CharacterNode,
+    "LoadImagesFromDirList":LoadImagesFromDirList,
+    "TimeStampedImageSaver": TimeStampedImageSaver,
 }
 # 一个包含节点友好/可读的标题的字典
 
@@ -754,6 +915,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "JsonRegexNode":"提示词分离",
     "GeminiChatNode":"gemini大语言对话",
     "CharacterNode": "角色抽取",
+    "LoadImagesFromDirList":"加载图片列表",
+    "TimeStampedImageSaver": "保存图像（按本地时间）",
 
 
 }
