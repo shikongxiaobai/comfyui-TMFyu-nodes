@@ -15,6 +15,166 @@ from PIL import Image, ImageOps
 import datetime
 from PIL import Image, PngImagePlugin
 
+
+class RandomCSVReader:
+    """
+    CSV随机行读取器
+    功能：
+    1. 读取指定CSV文件内容
+    2. 根据随机种子生成可重复的随机选择
+    3. 自动跳过标题行
+    4. 支持空文件处理
+    """
+    def __init__(self):
+        self.cache = {}
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "file_path": ("STRING", {"default": "text_history.csv"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING", "INT")
+    RETURN_NAMES = ("random_text", "used_seed")
+    FUNCTION = "read_random"
+    CATEGORY = "TMFyu/Text"
+
+    def read_random(self, file_path, seed):
+        # 初始化随机生成器
+        rng = random.Random(seed)
+        
+        try:
+            # 检查文件是否存在
+            if not os.path.isfile(file_path):
+                return ("[Error] File not found", seed)
+            
+            # 读取CSV内容
+            with open(file_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                rows = [row[0] for row in reader if row]  # 跳过空行
+                
+            # 过滤标题行（假设第一行是标题）
+            data_rows = rows[1:] if len(rows) > 1 else []
+            
+            if not data_rows:
+                return ("[Error] No data rows", seed)
+            
+            # 生成随机索引
+            random_index = rng.randint(0, len(data_rows)-1)
+            selected_text = data_rows[random_index]
+            
+            return (selected_text, seed)
+            
+        except Exception as e:
+            return (f"[Error] {str(e)}", seed)
+
+
+
+
+
+class SaveUniqueTextToCSV:
+    """
+    将唯一文本保存到CSV文件
+    功能：
+    1. 首次输入时创建CSV文件并添加标题
+    2. 后续输入会检查文件最后一行内容
+    3. 仅在不同内容时追加新行
+    """
+    def __init__(self):
+        self.last_saved_text = None
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"multiline": True, "default": ""}),
+                "file_name": ("STRING", {"default": "text_history.csv"}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("current_text",)
+    FUNCTION = "save_text"
+    CATEGORY = "TMFyu/Text"
+
+    def save_text(self, text, file_name):
+        # 检查文件是否存在
+        file_exists = os.path.isfile(file_name)
+        
+        # 读取最后保存的内容
+        last_content = self.read_last_line(file_name) if file_exists else None
+
+        # 判断是否需要保存
+        if text.strip() and text != last_content:
+            self.write_to_csv(file_name, text, file_exists)
+            self.last_saved_text = text
+
+        return (text,)
+
+    def read_last_line(self, file_path):
+        try:
+            with open(file_path, 'r', newline='', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                last_line = None
+                for last_line in reader:
+                    pass
+                return last_line[0] if last_line else None
+        except Exception as e:
+            print(f"Error reading CSV file: {e}")
+            return None
+
+    def write_to_csv(self, file_path, text, file_exists):
+        try:
+            with open(file_path, 'a', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                if not file_exists:
+                    writer.writerow(["text"])
+                writer.writerow([text.strip()])
+        except Exception as e:
+            print(f"Error writing to CSV file: {e}")
+
+
+
+
+
+
+class RandomSizeNode:
+    @classmethod 
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "presets_path": ("STRING", {"default": "size_presets.txt"}),
+            },
+        }
+
+    RETURN_TYPES = ("INT", "INT")
+    RETURN_NAMES = ("width", "height")
+    FUNCTION = "get_random_size"
+    CATEGORY = "TMFyu/Text"
+
+    def get_random_size(self, seed, presets_path):
+        random.seed(seed)
+        
+        # 如果路径是相对路径，则转换为绝对路径
+        if not os.path.isabs(presets_path):
+            presets_path = os.path.join(folder_paths.get_folder_paths("custom_nodes")[0], presets_path)
+        
+        with open(presets_path, "r") as f:
+            sizes = f.readlines()
+        
+        size = random.choice(sizes).strip()
+        width, height = map(int, size.split('x'))
+        
+        return (width, height)
+
+
+
+
+
 class TimeStampedImageSaver:
     def __init__(self):
         self.output_dir = folder_paths.get_output_directory()
@@ -189,7 +349,7 @@ class CharacterNode:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("prompt",)
     FUNCTION = "generate_prompt"
-    CATEGORY = "TMFyu/Text"
+    CATEGORY = "MFyu/Text"
 
     def load_csv(self, filename):
         data = {}
@@ -900,6 +1060,10 @@ NODE_CLASS_MAPPINGS = {
     "CharacterNode": CharacterNode,
     "LoadImagesFromDirList":LoadImagesFromDirList,
     "TimeStampedImageSaver": TimeStampedImageSaver,
+    "RandomSizeNode":RandomSizeNode,
+    "RandomCSVReader":RandomCSVReader,
+    "SaveUniqueTextToCSV":SaveUniqueTextToCSV,
+
 }
 # 一个包含节点友好/可读的标题的字典
 
@@ -917,6 +1081,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CharacterNode": "角色抽取",
     "LoadImagesFromDirList":"加载图片列表",
     "TimeStampedImageSaver": "保存图像（按本地时间）",
+    "RandomSizeNode":"随机尺寸",
+    "RandomCSVReader":"随机CSV读取",
+    "SaveUniqueTextToCSV": "保存唯一文本到CSV"
+
 
 
 }
